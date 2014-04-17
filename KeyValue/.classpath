@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
 	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="src" path="resources"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry kind="lib" path="/ProM/lib/axis.jar"/>
 	<classpathentry kind="lib" path="/ProM/lib/bsh-2.0b4.jar"/>
@@ -58,5 +59,6 @@
 	<classpathentry kind="lib" path="packagelib/LogDialog.jar"/>
 	<classpathentry kind="lib" path="packagelib/Widgets.jar"/>
 	<classpathentry kind="lib" path="lib/trove-3.0.0rc2.jar"/>
+	<classpathentry kind="lib" path="stdlib/images"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

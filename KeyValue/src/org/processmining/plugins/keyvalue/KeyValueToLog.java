@@ -1,11 +1,26 @@
 package org.processmining.plugins.keyvalue;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Graphics2D;
+import java.awt.GraphicsConfiguration;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
+import java.awt.GridLayout;
+import java.awt.Image;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Field;
 import java.math.BigInteger;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,7 +28,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
-import java.util.GregorianCalendar;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -23,12 +38,18 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.Vector;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.imageio.ImageIO;
 import javax.swing.AbstractCellEditor;
+import javax.swing.GrayFilter;
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
+import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTable;
+import javax.swing.SwingConstants;
+import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableColumnModel;
 import javax.swing.table.DefaultTableModel;
@@ -39,6 +60,7 @@ import javax.swing.table.TableModel;
 import javax.swing.table.TableRowSorter;
 
 import org.deckfour.uitopia.api.event.TaskListener.InteractionResult;
+import org.deckfour.uitopia.ui.util.ImageLoader;
 import org.deckfour.xes.extension.XExtension;
 import org.deckfour.xes.extension.XExtensionManager;
 import org.deckfour.xes.extension.std.XConceptExtension;
@@ -65,11 +87,14 @@ import org.processmining.contexts.uitopia.annotations.UITopiaVariant;
 import org.processmining.framework.plugin.PluginContext;
 import org.processmining.framework.plugin.annotations.Plugin;
 import org.processmining.framework.plugin.annotations.PluginVariant;
+import org.processmining.framework.util.ui.widgets.HeaderRenderer;
 import org.processmining.framework.util.ui.widgets.ProMCheckComboBox;
 import org.processmining.framework.util.ui.widgets.ProMComboBox;
 import org.processmining.framework.util.ui.widgets.ProMPropertiesPanel;
 import org.processmining.framework.util.ui.widgets.ProMTable;
 import org.processmining.framework.util.ui.widgets.ProMTextField;
+import org.processmining.plugins.impl.IconCellRendererImpl;
+import org.processmining.plugins.impl.TableModelImpl;
 import org.processmining.plugins.utils.HammingDistance;
 import org.processmining.plugins.utils.ProvidedObjectHelper;
 
@@ -110,13 +135,13 @@ public class KeyValueToLog {
 			return comboBox;
 		}
 
-		//	    public boolean stopCellEditing() {
-		//	    	             // Commit edited value.
-		//	    	 comboBox.actionPerformed(new ActionEvent(
-		//	    	                      DefaultCellEditor.this, 0, ""));
-		//	    	         }
-		//	    	         return super.stopCellEditing();
-		//	    	         };
+		// public boolean stopCellEditing() {
+		// // Commit edited value.
+		// comboBox.actionPerformed(new ActionEvent(
+		// DefaultCellEditor.this, 0, ""));
+		// }
+		// return super.stopCellEditing();
+		// };
 
 	}
 
@@ -125,15 +150,34 @@ public class KeyValueToLog {
 		 * 
 		 */
 		private static final long serialVersionUID = 1L;
+		private int initialSize=0;
 
-		public MappingTable(final TableModel model, final TableColumnModel columnModel) {
+		public MappingTable(final DefaultTableModel model, final TableColumnModel columnModel) {
 			super(model, columnModel);
-		}
+			if(initialSize==0)
+				initialSize=model.getRowCount()-1;
 
-		public boolean isCellEditable(final int rowIndex, final int colIndex) {
-			if (colIndex == 0)
-				return false;
-			return true;
+			getTable().setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
+
+			addMouseListener(new MouseAdapter() {
+				@Override
+				public void mouseClicked(MouseEvent e) {
+					if (e.getClickCount() == 2) {
+						final int col = columnAtPoint(e.getPoint());
+						final int row = rowAtPoint(e.getPoint());
+						final NamedAttribute attributeRow = (NamedAttribute) getTable().getValueAt(row, 0);
+						final String columnName = attributeRow.name;
+						
+						if (col == 2 && row>initialSize) {
+							model.removeRow(row);
+							getSystemMessage(" Column >" + columnName + "< removed from attribute tree.", Color.yellow);
+						}else if (col == 2) {
+							getSystemMessage(" Column >" + columnName + "< cannot be removed from attribute tree.", Color.yellow);
+						}
+					}
+				}
+			});
+
 		}
 	}
 
@@ -187,12 +231,14 @@ public class KeyValueToLog {
 
 	private static final Pattern pattern = Pattern.compile("\\s*(\\d+)-(\\d+)-(\\d+)(\\s*(\\d+):(\\d+)(:(\\d+))?)?");
 
-	private static String [] valtime = {"dd-MM-yyyy HH:mm:ss","dd/MM/yyyy HH:mm:ss.S","dd-MM-yyyy HH:mm:ss.S" ,"dd/MM/yyyy HH:mm:ss","dd/MM/yyyy HH:mm",
-		"MM/dd/yyyy HH:mm:ss.S","MM/dd/yyyy HH:mm:ss","MM/dd/yyyy HH:mm","yyyy/MM/dd HH:mm:ss.S","dd/MM/yyyy HH:mm:ss:S"};
+	private static String[] valtime = { "dd-MM-yyyy HH:mm:ss", "dd/MM/yyyy HH:mm:ss.S", "dd-MM-yyyy HH:mm:ss.S",
+			"dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm", "MM/dd/yyyy HH:mm:ss.S", "MM/dd/yyyy HH:mm:ss",
+			"MM/dd/yyyy HH:mm", "yyyy/MM/dd HH:mm:ss.S", "dd/MM/yyyy HH:mm:ss:S" };
 
 	private final static ProMComboBox time = new ProMComboBox(new HashSet<String>(Arrays.asList(valtime)));
 
-	
+	private final static JLabel message = new JLabel();
+
 	/**
 	 * @param context
 	 * @param set
@@ -210,7 +256,7 @@ public class KeyValueToLog {
 		XLog resultLog = null;
 		context.log("Converting " + set.length + " log" + (set.length == 1 ? "" : "s") + "...");
 		int n = 0;
-		for (KeyValue s : set) {
+		for (final KeyValue s : set) {
 			n++;
 			context.log((set.length > 1 ? ("Log " + n + " / " + set.length + ": ") : "") + "Found " + s.size()
 					+ " data item" + (s.size() != 1 ? "s" : ""));
@@ -290,7 +336,7 @@ public class KeyValueToLog {
 							if (result != 0)
 								return result;
 							return 0;
-							//						return arg1.hashCode() - arg1.hashCode();
+							// return arg1.hashCode() - arg1.hashCode();
 						}
 
 						@SuppressWarnings("unchecked")
@@ -301,12 +347,13 @@ public class KeyValueToLog {
 								return 1;
 							try {
 								return ((Comparable<Object>) object).compareTo(object2);
-							} catch (Exception _) {
-								// Ignore, this happens if it is not comparable or not comparable to the type of object2
+							} catch (final Exception _) {
+								// Ignore, this happens if it is not comparable
+								// or not comparable to the type of object2
 							}
 							try {
 								return -1 * (((Comparable<Object>) object2).compareTo(object));
-							} catch (Exception _) {
+							} catch (final Exception _) {
 								// Ignore, same reason as above
 							}
 							return 0;
@@ -363,11 +410,13 @@ public class KeyValueToLog {
 	 * @param context
 	 * @param set
 	 * @return
+	 * @throws MalformedURLException
 	 */
 	@SuppressWarnings("unchecked")
 	@UITopiaVariant(affiliation = UITopiaVariant.EHV, author = "M. Westergaard", email = "m.westergaard@tue.nl", uiLabel = UITopiaVariant.USEPLUGIN)
 	@PluginVariant(variantLabel = "Default settings", requiredParameterLabels = { 0 })
-	public static Object[] keyValueToLog(final UIPluginContext context, final KeyValue... set) {
+	public static Object[] keyValueToLog(final UIPluginContext context, final KeyValue... set)
+			throws MalformedURLException {
 		if (set == null || set.length < 1) {
 			context.getFutureResult(0).cancel(true);
 			return null;
@@ -378,7 +427,17 @@ public class KeyValueToLog {
 		final Set<NamedAttribute> attributes = new TreeSet<NamedAttribute>();
 		int i = 0;
 		XExtension extension;
-		while ((extension = XExtensionManager.instance().getByIndex(i++)) != null) { // Can't find a nicer way to iteratoe over registered extensions :-(
+		while ((extension = XExtensionManager.instance().getByIndex(i++)) != null) { // Can't
+																						// find
+																						// a
+																						// nicer
+																						// way
+																						// to
+																						// iteratoe
+																						// over
+																						// registered
+																						// extensions
+																						// :-(
 			for (final XAttribute attribute : extension.getEventAttributes()) {
 				attributes.add(new NamedAttribute(attribute.getKey() + " (" + extension.getName() + ")", attribute));
 			}
@@ -386,31 +445,57 @@ public class KeyValueToLog {
 
 		context.log("Collecting keys");
 		final Set<String> values = new HashSet<String>();
-		for (KeyValue s : set) {
+		for (final KeyValue s : set) {
 			values.addAll(Helper.gatherKeys(s));
 		}
+		
+		final ImageIcon removeEnable = new ImageIcon(ImageLoader.load("icona-cestino.png"));
+
+		
+		//final ImageIcon removeEnable = new ImageIcon(new URL(
+				//"http://findicons.com/icon/download/263447/trash_canfull/16/png"));
+		
+		Image image=new ImageIcon(ImageLoader.load("icona-cestino.png")).getImage();
+		final ImageIcon removeDisable = new ImageIcon(GrayFilter.createDisabledImage(image));
 
 		final ProMPropertiesPanel properties = new ProMPropertiesPanel(null);
 		properties.addProperty("Extra sorting", new ProMCheckComboBox(values));
 		final DefaultTableModel model = Helper.buildSampleTable(set[0], values);
-		properties.addProperty("Time format",time);
-		final DefaultTableModel contentsModel = new DefaultTableModel();
+		properties.addProperty("Time format", time);
+		final DefaultTableModel contentsModel = new TableModelImpl("AttributeTable");
 		contentsModel.addColumn("Attribute");
 		contentsModel.addColumn("Keys");
-		contentsModel.addRow(new Object[] { "Trace identifier", Collections.emptyList() });
-		for (final NamedAttribute attribute : attributes) {
-			contentsModel.addRow(new Object[] { attribute, Collections.emptyList() });
-			//			Collections.singletonList(HammingDistance.getBestMatch(attribute.toString(), values)) });
-		}
-		final DefaultTableColumnModel contentsColumns = new DefaultTableColumnModel();
-		final TableColumn attributeColumn = new TableColumn(0, 100, new DefaultTableCellRenderer(), null);
-		attributeColumn.setHeaderValue("Attribute");
-		contentsColumns.addColumn(attributeColumn);
-		final TableColumn keyColumn = new TableColumn(1, 100, new DefaultTableCellRenderer(), new KeysEditor(values));
-		keyColumn.setHeaderValue("Keys");
-		contentsColumns.addColumn(keyColumn);
-		properties.addProperty("Mapping", new MappingTable(contentsModel, contentsColumns));
+		contentsModel.addColumn("Remove");
+		contentsModel.addRow(new Object[] { "Trace identifier", Collections.emptyList(), removeDisable });
 
+		for (final NamedAttribute attribute : attributes) {
+			contentsModel.addRow(new Object[] { attribute, Collections.emptyList(), removeDisable });
+			// Collections.singletonList(HammingDistance.getBestMatch(attribute.toString(),values))
+			// });
+		}
+
+		final HeaderRenderer hr = new HeaderRenderer();
+		hr.setHorizontalAlignment(SwingConstants.LEFT);
+		final DefaultTableColumnModel contentsColumns = new DefaultTableColumnModel();
+		final TableColumn attributeColumn = new TableColumn(0, 230, new DefaultTableCellRenderer(), null);
+		attributeColumn.setHeaderValue("Attribute");
+		attributeColumn.setHeaderRenderer(hr);
+		contentsColumns.addColumn(attributeColumn);
+		final TableColumn keyColumn = new TableColumn(1, 240, new DefaultTableCellRenderer(), new KeysEditor(values));
+		keyColumn.setHeaderValue("Keys");
+		keyColumn.setHeaderRenderer(hr);
+		contentsColumns.addColumn(keyColumn);
+		final TableColumn removeColumn = new TableColumn(2);
+		removeColumn.setHeaderValue("Remove");
+		removeColumn.setCellRenderer(new IconCellRendererImpl());
+		removeColumn.setHeaderRenderer(hr);
+		contentsColumns.addColumn(removeColumn);
+
+		//
+		final MappingTable attributeTable = new MappingTable(contentsModel, contentsColumns);
+		properties.addProperty("Mapping", attributeTable);
+
+		// Attribute
 		final JPanel jPanel = new JPanel();
 		jPanel.setOpaque(false);
 		jPanel.setLayout(new BorderLayout());
@@ -418,6 +503,7 @@ public class KeyValueToLog {
 		final ProMTextField attributeName = new ProMTextField();
 		attributeName.setPreferredSize(new Dimension(200, 30));
 		attributeName.setMinimumSize(new Dimension(50, 30));
+		attributeName.setEditable(false);
 		jPanel.add(attributeName, BorderLayout.CENTER);
 		final ProMComboBox comboBox = new ProMComboBox(AttributeKind.values());
 		comboBox.setPreferredSize(new Dimension(200, 30));
@@ -427,10 +513,39 @@ public class KeyValueToLog {
 		final SlickerButton button = new SlickerButton("Add Attribute");
 		jPanel.add(button, BorderLayout.EAST);
 
+		// System message display
+		final JPanel messagePanel = new JPanel();
+		messagePanel.setOpaque(true);
+		messagePanel.setBackground(Color.darkGray);
+		messagePanel.setLayout(new GridLayout(0, 1));
+		messagePanel.setBorder(new EmptyBorder(15, 5, 5, 5));
+		// messaggio
+		getSystemMessage(".... attesa messaggio....", Color.yellow);
+		messagePanel.add(message);
+
+		properties.add(messagePanel);
+
+		// table of CSV loaded data
 		final ProMTable table = new ProMTable(model);
 		table.setPreferredSize(new Dimension(300, 120));
 		table.setRowSorter(new TableRowSorter<TableModel>(model));
 		properties.add(table, 0);
+
+		table.getTableHeader().addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				if (e.getClickCount() == 2) {
+					final int col = table.columnAtPoint(e.getPoint());
+					final int row = table.rowAtPoint(e.getPoint());
+					final String columnName = table.getTable().getColumnName(col);
+
+					// TODO: write class for hint type field
+
+					attributeName.setText(columnName);
+					getSystemMessage(" Column >" + columnName + "< selected for attribute tree, please select the >type<.", Color.green);
+				}
+			}
+		});
 
 		button.addActionListener(new ActionListener() {
 			@Override
@@ -439,25 +554,35 @@ public class KeyValueToLog {
 				final String key = attributeName.getText().trim();
 				if (!"".equals(key)) {
 					switch ((AttributeKind) comboBox.getSelectedItem()) {
-						case BOOLEAN :
-							attribute = new XAttributeBooleanImpl(key, false);
-							break;
-						case DATE :
-							attribute = new XAttributeTimestampImpl(key, 0);
-							break;
-						case DISCRETE :
-							attribute = new XAttributeDiscreteImpl(key, 0);
-							break;
-						case CONTINUOUS :
-							attribute = new XAttributeContinuousImpl(key, 0);
-							break;
-						case LITERAL :
-							attribute = new XAttributeLiteralImpl(key, "dummy");
-							break;
+					case BOOLEAN:
+						attribute = new XAttributeBooleanImpl(key, false);
+						break;
+					case DATE:
+						attribute = new XAttributeTimestampImpl(key, 0);
+						break;
+					case DISCRETE:
+						attribute = new XAttributeDiscreteImpl(key, 0);
+						break;
+					case CONTINUOUS:
+						attribute = new XAttributeContinuousImpl(key, 0);
+						break;
+					case LITERAL:
+						attribute = new XAttributeLiteralImpl(key, "dummy");
+						break;
 					}
 					assert attribute != null;
-					contentsModel.addRow(new Object[] { new NamedAttribute(key, attribute),
-							Collections.singletonList(HammingDistance.getBestMatch(key, values)) });
+					if (!existAttribute(contentsModel, key)) {
+						contentsModel.addRow(new Object[] { new NamedAttribute(key, attribute),
+								Collections.singletonList(HammingDistance.getBestMatch(key, values)), removeEnable });
+						getSystemMessage(" Column >" + key + "< inserted into attribute tree.", Color.green);
+					} else {
+						getSystemMessage(" Column name >" + key + "< already inserted into attribute tree.", Color.red);
+
+						context.log(" Column name already inserted.");
+					}
+
+					// clean field
+					attributeName.setText(null);
 				}
 			}
 		});
@@ -476,7 +601,7 @@ public class KeyValueToLog {
 					trace = (List<String>) v.get(1);
 				}
 			}
-			Mapping mappingSetup = new Mapping(trace, mapping);
+			final Mapping mappingSetup = new Mapping(trace, mapping);
 			return new Object[] { (KeyValueToLog.keyValueToLog(context, mappingSetup, set))[0], mappingSetup };
 		}
 		context.getFutureResult(0).cancel(true);
@@ -574,54 +699,70 @@ public class KeyValueToLog {
 		return result;
 	}
 
-	/*protected synchronized static Date datify(final String string) {
-
-		final Matcher matcher = KeyValueToLog.pattern.matcher(string);
-		try {
-			if (matcher.matches()) {
-				final int d = Integer.parseInt(matcher.group(1));
-				final int m = Integer.parseInt(matcher.group(2));
-				int y = Integer.parseInt(matcher.group(3));
-				if (y < 50) {
-					y += 100;
-				}
-				if (y < 150) {
-					y += 1900;
-				}
-				int h = 0, min = 0, s = 0;
-				try {
-					h = Integer.parseInt(matcher.group(5));
-					min = Integer.parseInt(matcher.group(6));
-					s = Integer.parseInt(matcher.group(8));
-				} catch (final Exception _) {
-					// Ignore
-				}
-				final GregorianCalendar gregorianCalendar = new GregorianCalendar(y, m - 1, d, h, min, s);
-				return gregorianCalendar.getTime();
-			} else {
-				// assume xsDataTime
-				return XAttributeTimestamp.FORMATTER.parseObject(string);
-			}
-		} catch (final Exception _) {
-			// Mask
-		}
-		return null;
-	}*/
+	/*
+	 * protected synchronized static Date datify(final String string) {
+	 * 
+	 * final Matcher matcher = KeyValueToLog.pattern.matcher(string); try { if
+	 * (matcher.matches()) { final int d = Integer.parseInt(matcher.group(1));
+	 * final int m = Integer.parseInt(matcher.group(2)); int y =
+	 * Integer.parseInt(matcher.group(3)); if (y < 50) { y += 100; } if (y <
+	 * 150) { y += 1900; } int h = 0, min = 0, s = 0; try { h =
+	 * Integer.parseInt(matcher.group(5)); min =
+	 * Integer.parseInt(matcher.group(6)); s =
+	 * Integer.parseInt(matcher.group(8)); } catch (final Exception _) { //
+	 * Ignore } final GregorianCalendar gregorianCalendar = new
+	 * GregorianCalendar(y, m - 1, d, h, min, s); return
+	 * gregorianCalendar.getTime(); } else { // assume xsDataTime return
+	 * XAttributeTimestamp.FORMATTER.parseObject(string); } } catch (final
+	 * Exception _) { // Mask } return null; }
+	 */
 	protected synchronized static Date datify(final String string) {
-		//final Matcher matcher = KeyValueToLog.pattern.matcher(string);
+		// final Matcher matcher = KeyValueToLog.pattern.matcher(string);
 		try {
-			String format= time.getSelectedItem().toString();
-			SimpleDateFormat formatter= new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");;
-			if(format!=null){
+			final String format = time.getSelectedItem().toString();
+			SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+			;
+			if (format != null) {
 				formatter = new SimpleDateFormat(format);
 			}
 
-			Date date = (Date)formatter.parse(string);
+			final Date date = formatter.parse(string);
 			return date;
 
 		} catch (final Exception _) {
 			// Mask
 		}
 		return null;
+	}
+
+	private synchronized static boolean existAttribute(DefaultTableModel contentsModel, String newAttributeName) {
+		boolean finded = false;
+
+		final Vector contentsData = contentsModel.getDataVector();
+		Vector singleRow;
+		NamedAttribute attributeRow;
+		Object testObject;
+		final Enumeration vEnum = contentsData.elements();
+
+		while (vEnum.hasMoreElements()) {
+			singleRow = (Vector) vEnum.nextElement();
+			testObject = singleRow.firstElement();
+			if (testObject instanceof NamedAttribute) {
+
+				attributeRow = (NamedAttribute) testObject;
+
+				if (newAttributeName.equals(attributeRow.name)) {
+					finded = true;
+					break;
+				}
+			}
+		}
+
+		return finded;
+	}
+
+	private synchronized static void getSystemMessage(String m, Color c) {
+		message.setForeground(c);
+		message.setText(m);
 	}
 }

@@ -7,13 +7,15 @@ import java.util.TreeSet;
 
 import javax.swing.table.DefaultTableModel;
 
+import org.processmining.plugins.impl.TableModelImpl;
+
 /**
  * @author michael
  * 
  */
 public class Helper {
 	public static DefaultTableModel buildSampleTable(final KeyValue set, final Set<String> values) {
-		final DefaultTableModel model = new DefaultTableModel();
+		final DefaultTableModel model = new TableModelImpl("CSVTable");
 		for (final String value : values) {
 			final int pos = value.lastIndexOf(':');
 			String name = value;
